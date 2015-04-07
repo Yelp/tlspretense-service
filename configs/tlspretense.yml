@@ -1,0 +1,522 @@
+# This hostname is the one that the test runner will actually perform its test
+# against. All other intercepted SSL connections will use the original
+# certificate, but doctored to use the goodca. For this hostname, the SSL
+# interceptor will present the configured certificate chain of generated
+# certificates.
+#
+# Additionally, the defaultsubject and defaultsubjectwithnull strings will
+# replace %HOSTNAME% with this value during certificate generation.
+#hostname: my.hostname.com
+hostname: example.org
+
+# Configuration options to pass to PacketThief to configure your firewall.
+packetthief:
+  # Explicitly declare what firewall implementation to use for intercepting
+  # traffic. It is also needed to discover the original destination of
+  # intercepted network traffic. There are two special implementations: the
+  # 'manual' implementation is meant for when you don't use a firewall at all.
+  # In this case, you must explicitly provide an original destination for the
+  # proxy to forward all intercepted traffic to.
+  #
+  # The second special implementation is 'external'. This means that you are
+  # using a supported firewall, but you want to configure the redirection rule
+  # outside of TLSPretense. In this case, you need to name an actual firewall
+  # implementation so that the socket that receives the intercepted connection
+  # can acquire the original destination (redirected connections provide their
+  # original destination through various standard socket APIs).
+  #
+  # It the implementation is left commented out, then TLSPretense will guess
+  # which implementation to use.
+  #
+  # Options:
+  #
+  # - netfilter                 Linux netfilter
+  #
+  # - ipfw                      MacOSX10.6/BSD ipfw
+  #
+  # - pfrdr                     MacOSX10.7(and 10.8)'s version of PF
+  #
+  # - manual(destination)       If you choose manual, you must also choose a
+  #                             default destination address or hostname.
+  #
+  # - external(implementation)  Use firewall rules that are not managed by the
+  #                             test harness, but that might provide us with
+  #                             the original destination.
+  #implementation: manual(www.isecpartners.com)
+
+  # The remaining options are used to construct the firewall rule:
+  protocol: tcp
+  # dest_port should match the one Docker listens to, not the target service
+  dest_port: 8443
+  # Linux-like interface:
+  in_interface: eth0
+  # Mac OS X-like interface:
+  #in_interface: en1
+
+# The port that PacketThief should redirect traffic to, and the port that the
+# SSL interceptor will run on during each test.
+listener_port: 54321
+
+# The testing_method is used to determine whether the client has accepted or
+# rejected a certificate. If you find any of these to be unreliable, then you
+# will need to determine pass/fail yourself.
+#
+# - tlshandshake    We say that the client accepts a test if it completes the
+#                   TLS handshake, and it rejects a request if it does not
+#                   complete the handshake.
+# - senddata        We say that the client accepts a test if it sends data,
+#                   instead of whether it completes the TLS handshake. This may
+#                   be necessary for Android and probably other Java-based SSL
+#                   using code.
+testing_method: senddata
+
+# Meta-configuration for certificate generation. These values affect the
+# default settings for certificate generation.
+certmaker:
+  # The default subject string used by the generated certificates. Note that
+  # the substring %HOSTNAME% will be replaced with the value of hostname.
+  defaultsubject: &defaultsubject "C=US, CN=%HOSTNAME%"
+
+  # The default subject string for the null in subject certificate test.
+  # Intended to be almost identical to the defaultsubject.
+  defaultsubjectwithnull: &defaultsubjectwithnull "C=US, CN=%HOSTNAME%\0.foo.com"
+
+  # a subject string, but with the the hostname's parent domain instead of its
+  # domain. A test that should fail.
+  defaultparentsubject: &defaultparentsubject "C=US, CN=%PARENTHOSTNAME%"
+
+  # The directory where pregenerated certificates should be stored.
+  outdir: certs
+
+  # If a serial number is not explicitly set on a certificate definition, then
+  # this value helps decide how the certificate factory generates the
+  # certificate. Possible values:
+  #
+  # * <a number>  Use this predefined value as the serial number. Note that
+  #               some SSL clients (eg, Firefox) will detect duplicate serial
+  #               numbers during a single run of the application.
+  #
+  # * random      randomly generate a serial number
+  missing_serial_generation: random
+
+  # customgoodca allows you to load a CA certificate and key from a file. If it
+  # is commented out, then CertMaker will generate a new CA every time it is
+  # run. If this entry exists, but the files do not exist, then the first time
+  # goodca is generated, it will also be copied to these file locations in
+  # order to reuse it in the future.
+  customgoodca:
+    # The path to the PEM encoded certificate:
+    certfile: ca/goodcacert.pem
+    # The path to the PEM encoded key:
+    keyfile:  ca/goodcakey.pem
+    # Uncomment keypass and set the password only if your key needs a password.
+    # If there is no password, leave it commented out. Note that the copy of
+    # the CA that will be created in the certs directory will not have any
+    # password protection.
+    #keypass: changeme
+
+logger:
+  level: INFO
+  file: '-'
+
+certs:
+  goodca: &goodca
+    subject: "C=US, CN=Trusted CA"
+    issuer: self
+    not_before: now
+    not_after: +365
+    extensions:
+    - "keyUsage = critical, keyCertSign"  # can sign certificates
+    - "basicConstraints = critical,CA:true"
+    - "subjectKeyIdentifier=hash"
+    - "authorityKeyIdentifier=keyid:always"
+    key_type: RSA
+    key_size: 1024
+    signing_alg: SHA1
+
+  unknownca: &unknownca
+    <<: *goodca
+    subject: "C=US, CN=Unknown CA"
+
+  goodintermediate: &goodintermediate
+    <<: *goodca
+    subject: "C=US, CN=Intermediate Cert"
+    issuer: goodca
+
+  baseline: &baseline
+    subject: *defaultsubject
+    issuer: goodca
+    not_before: now
+    not_after: +365
+    extensions:
+    - "keyUsage=digitalSignature, keyEncipherment" # can sign data and can encrypt symmetric keys
+    - "extendedKeyUsage=serverAuth, clientAuth" # can be used as both a www server cert and www client cert
+    - "authorityKeyIdentifier=keyid:always"
+    - "subjectKeyIdentifier=hash"
+    - "basicConstraints = critical,CA:FALSE"
+    key_type: RSA
+    key_size: 1024
+    signing_alg: SHA1
+
+  wrongcname: &wrongcname
+    <<: *baseline
+    subject: "C=US, CN=www.foo.com"
+
+  parentcname: &parentcname
+    <<: *baseline
+    subject: *defaultparentsubject
+
+  nullincname: &nullincname
+    <<: *baseline
+    subject: *defaultsubjectwithnull
+
+  baselinesubjectaltname: &baselinesubjectaltname
+    <<: *baseline
+    addextensions:
+    - "subjectAltName=DNS:%HOSTNAME%"
+
+  subjectaltnameonly: &subjectaltnameonly
+    <<: *baseline
+    subject: "C=US, O=My Awesome Organization"
+    addextensions:
+    - "subjectAltName=DNS:%HOSTNAME%"
+
+  wrongsubjectaltnamerightsubject: &wrongsubjectaltnamerightsubject
+    <<: *baseline
+    addextensions:
+    - "subjectAltName=DNS:www.foo.com"
+
+  wrongsubjectaltnamewrongsubject: &wrongsubjectaltnamewrongsubject
+    <<: *baseline
+    subject: "C=US, CN=www.foo.com"
+    addextensions:
+    - "subjectAltName=DNS:www.foo.com"
+
+  # This fails to generate as desired. the null byte truncates the
+  # subjectAltName somewhere within OpenSSL. We need to manually construct the
+  # ASN1 encoding ourselves.
+#  nullinsubjectaltname: &nullinsubjectaltname
+#    <<: *subjectaltnameonly
+#    addextensions:
+#    - "subjectAltName=DNS:%HOSTNAME%\x00.foo.com, DNS:another.com"
+
+  parentinsubjectaltname: &parentinsubjectaltname
+    <<: *subjectaltnameonly
+    addextensions:
+    - "subjectAltName=DNS:%PARENTHOSTNAME%"
+
+  # extended key usage specifies code signing instead of serverAuth
+  wrongextendedkeyusage: &wrongextendedkeyusage
+    <<: *baseline
+    blockextensions:
+    - extendedKeyUsage
+    addextensions:
+    - "extendedKeyUsage = codeSigning"
+
+  rightextendedkeyusagecrit: &rightextendedkeyusagecrit
+    <<: *baseline
+    blockextensions:
+    - extendedKeyUsage
+    addextensions:
+    - "extendedKeyUsage = critical,serverAuth"
+  wrongextendedkeyusagecrit: &wrongextendedkeyusagecrit
+    <<: *baseline
+    blockextensions:
+    - extendedKeyUsage
+    addextensions:
+    - "extendedKeyUsage = critical,codeSigning"
+
+  selfsigned: &selfsigned
+    <<: *baseline
+    issuer: self
+    blockextensions:
+    - authorityKeyIdentifier
+
+  unknowncacert: &unknowncacert
+    <<: *baseline
+    issuer: unknownca
+
+  badsignature: &badsignature
+    <<: *baseline
+    signing_key: unknownca # signing_key defaults to the issuer unless added.
+
+  # we should probably also check for bad keyUsage, since keyUsage=keyCertSign also grants CA abilities
+  cafalseintermediate: &cafalseintermediate
+    <<: *baseline
+    subject: "C=US, CN=Intermediate with BasicConstraints CA:FALSE"
+
+  signedbycafalseint: &signedbycafalseint
+    <<: *baseline
+    issuer: cafalseintermediate
+
+  # we should probably also check for bad keyUsage, since keyUsage=keyCertSign also grants CA abilities
+  nobcintermediate: &nobcintermediate
+    <<: *baseline
+    subject: "C=US, CN=Intermediate with no basicConstraints"
+    blockextensions:
+    - basicconstraints
+
+  signedbynobcint:
+    <<: *baseline
+    issuer: nobcintermediate
+
+  badsigintermediate:
+    <<: *goodintermediate
+    subject: "C=US, CN=Intermediate with bad signature"
+    signing_key: unknownca # signing_key defaults to the issuer unless added
+
+  signedbybadsigintermediate:
+    <<: *baseline
+    issuer: badsigintermediate
+
+  # identical to goodca, but with its own key
+  cawithdifferentkey:
+    <<: *goodca
+
+  signedbydifferentkey:
+    <<: *baseline
+    issuer: cawithdifferentkey
+
+  expiredcert:
+    <<: *baseline
+    not_before: -365
+    not_after: -30
+
+  notyetvalidcert:
+    <<: *baseline
+    not_before: 365
+    not_after: 730
+
+  expiredintermediate:
+    <<: *goodintermediate
+    subject: "C=US, CN=Expired Intermediate"
+    not_before: -365
+    not_after: -30
+
+  signedbyexpiredint:
+    <<: *baseline
+    issuer: expiredintermediate
+
+  signedwithmd5:
+    <<: *baseline
+    signing_alg: MD5
+
+  signedwithmd4:
+    <<: *baseline
+    signing_alg: MD4
+
+  expiredca: &expiredca
+    <<: *goodca
+    subject: "C=US, CN=Expired CA"
+    not_before: -365
+    not_after: -30
+
+  signedbyexpiredca:
+    <<: *baseline
+    issuer: expiredca
+
+
+tests:
+# baseline
+- alias: baseline
+  name: Baseline Happy Test
+  certchain:
+  - baseline
+  - goodca
+  expected_result: connected
+
+# cname tests
+- alias: wrongcname
+  name: Wrong CNAME
+  certchain:
+  - wrongcname
+  - goodca
+  expected_result: rejected
+
+# cname tests
+- alias: parentcname
+  name: "Parent domain's CNAME"
+  certchain:
+  - parentcname
+  - goodca
+  expected_result: rejected
+
+- alias: nullincname
+  name: Null character in CNAME
+  certchain:
+  - nullincname
+  - goodca
+  expected_result: rejected
+
+# subjectAltName tests
+- alias: happysubjectaltname
+  name: Hostname is a dnsName in subjectAltName and in subject
+  certchain:
+  - baselinesubjectaltname
+  - goodca
+  expected_result: connected
+
+- alias: happysubjectaltnameonly
+  name: hostname only a dnsName subjectAltName
+  certchain:
+  - subjectaltnameonly
+  - goodca
+  expected_result: connected
+
+- alias: wrongsubjectaltnamewrongsubject
+  name: hostname in neither subjectAltName nor subject
+  certchain:
+  - wrongsubjectaltnamewrongsubject
+  - goodca
+  expected_result: rejected
+
+- alias: wrongsubjectaltnamerightsubject
+  name: hostname in subject but not in subjectAltName
+  certchain:
+  - wrongsubjectaltnamerightsubject
+  - goodca
+  expected_result: rejected
+
+#- alias: nullinsubjectaltname
+#  name: "null byte in subjectAltName"
+#  certchain:
+#  - nullinsubjectaltname
+#  - goodca
+#  expected_result: rejected
+#
+- alias: parentinsubjectaltname
+  name: "parent domain in subjectAltName"
+  certchain:
+  - parentinsubjectaltname
+  - goodca
+  expected_result: rejected
+
+# key usage
+- alias: wrongextendedkeyusage
+  name: extendedKeyUsage lacks serverAuth
+  certchain:
+  - wrongextendedkeyusage
+  - goodca
+  expected_result: rejected
+
+- alias: rightextendedkeyusagecrit
+  name: extendedKeyUsage lacks serverAuth
+  certchain:
+  - rightextendedkeyusagecrit
+  - goodca
+  expected_result: connected
+
+#####################
+# This one fails against Java/Android's standard SSL client code.
+- alias: wrongextendedkeyusagecrit
+  name: extendedKeyUsage lacks serverAuth
+  certchain:
+  - wrongextendedkeyusagecrit
+  - goodca
+  expected_result: rejected
+#####################
+
+# cert chain issues
+- alias: selfsigned
+  name: Selfsigned certificate
+  certchain:
+  - selfsigned
+  expected_result: rejected
+
+- alias: unknownca
+  name: Signed by an untrusted CA
+  certchain:
+  - unknowncacert
+  - unknownca
+  expected_result: rejected
+
+- alias: differentkeyca
+  name: Signed by an untrusted CA (provided in the chain) with the same name but a different key
+  certchain:
+  - signedbydifferentkey
+  - cawithdifferentkey
+  expected_result: rejected
+
+- alias: badsignature
+  name: Bad signature
+  certchain:
+  - badsignature
+  - goodca
+  expected_result: rejected
+
+- alias: cafalseintermediate
+  name: "Intermediate certificate where BasicConstraints sets CA:FALSE"
+  certchain:
+  - signedbycafalseint
+  - cafalseintermediate
+  - goodca
+  expected_result: rejected
+
+- alias: nobcintermediate
+  name: Intermediate certificate lacks BasicConstraints
+  certchain:
+  - signedbynobcint
+  - nobcintermediate
+  - goodca
+  expected_result: rejected
+
+- alias: badsigonintermediate
+  name: Intermediate certificate has bad signature from CA
+  certchain:
+  - signedbybadsigintermediate
+  - badsigintermediate
+  - goodca
+  expected_result: rejected
+
+- alias: signedwithmd5
+  name: Certificate signed with MD5
+  certchain:
+  - signedwithmd5
+  - goodca
+  expected_result: rejected
+
+- alias: signedwithmd4
+  name: Certificate signed with MD4
+  certchain:
+  - signedwithmd4
+  - goodca
+  expected_result: rejected
+
+## Need OpenSSL built with MD2 support
+#- alias: signedwithmd2
+#  name: Certificate signed with MD2
+#  certchain:
+#  - signedwithmd2
+#  - goodca
+#  expected_result: rejected
+
+- alias: expiredcert
+  name: Certificate that has expired
+  certchain:
+  - expiredcert
+  - goodca
+  expected_result: rejected
+
+- alias: notyetvalidcert
+  name: Certificate that is valid in the future
+  certchain:
+  - notyetvalidcert
+  - goodca
+  expected_result: rejected
+
+- alias: expiredintermediate
+  name: Certificate signed by an intermediate that has expired
+  certchain:
+  - signedbyexpiredint
+  - expiredintermediate
+  - goodca
+  expected_result: rejected
+
+# This requires installing the expired CA that is also installed into the
+# client's trusted root store.
+#- alias: expiredca
+#  name: "Certificate signed by a trusted, but expired CA"
+#  certchain:
+#  - signedbyexpiredca
+#  - expiredca
+#  expected_result: rejected
