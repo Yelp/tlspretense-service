@@ -1,3 +1,5 @@
+# The following file is from https://github.com/iSECPartners/tlspretense
+
 # This hostname is the one that the test runner will actually perform its test
 # against. All other intercepted SSL connections will use the original
 # certificate, but doctored to use the goodca. For this hostname, the SSL
