@@ -4,7 +4,6 @@ HOST_UID=$(shell id -u ${USER})
 DOCKER_PORT=8443
 
 # Under most circumstances, the following two variables should match your tlspretense.yaml file
-# See Runbook: TLS Client Testing for more information
 IPTABLES_DEST_IP=$(shell resolveip -s example.org)
 IPTABLES_DEST_PORT=443
 
