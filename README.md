@@ -1,7 +1,7 @@
-# tlspretense-docker
+# tlspretense-service
 A Docker container that exposes tlspretense as a service.
 
-Running tlspretense-docker:
+Running tlspretense-service:
 
 1. git clone this repository
 2. Update the variables in its Makefile and configs/tlspretense.yml to meet your needs:
@@ -12,7 +12,7 @@ Running tlspretense-docker:
   
 3. Update hostname in configs/tlspretense.yml to the one for your target service. This will be used for both lookup and masquerading.
 You can test a local service or a remote one.
-  - A local service (one on the same host as tlspretense-docker) should have the same hostname and a different port. This is by far the simplest way to test your service, as all of the “goodca” test cases should succeed.
+  - A local service (one on the same host as tlspretense-service) should have the same hostname and a different port. This is by far the simplest way to test your service, as all of the “goodca” test cases should succeed.
 Remote services work a bit differently. Unless you set up your own firewall rules (eg, iptables NAT using MASQUERADE), the goodca tests will fail. Keep this in mind.
 4. make
 5. Point your client at the host running your Docker container, along the port specified in DOCKER_PORT.
