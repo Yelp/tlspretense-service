@@ -14,7 +14,7 @@ Running tlspretense-service:
 You can test a local service or a remote one.
   - A local service (one on the same host as tlspretense-service) should have the same hostname and a different port. This is by far the simplest way to test your service, as all of the “goodca” test cases should succeed.
 Remote services work a bit differently. Unless you set up your own firewall rules (eg, iptables NAT using MASQUERADE), the goodca tests will fail. Keep this in mind.
-  - If necessary, update dest_port to reflect the port you've used in DOCKER_PORT as well.
+  - Update dest_port to reflect the port you've used in DOCKER_PORT as well. This is only necessary to ensure tlspretense is listening on the right port inside of the container, and will be unified with DOCKER_PORT in a later version.
 4. make
 5. Point your client at the host running your Docker container, along the port specified in DOCKER_PORT.
 
