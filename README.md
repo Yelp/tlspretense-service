@@ -1,5 +1,7 @@
 # tlspretense-service
-A Docker container that exposes tlspretense as a service.
+A Docker container that exposes tlspretense as a service. This launches [tlspretense](https://github.com/iSECPartners/tlspretense) in a Docker container, exposing its tests without having to use the container as a NAT device.
+
+This project is very similar to [tlspretense-docker](https://github.com/wsargent/tlspretense-docker), except it allows clients to connect to the container directly (as if it were the target service) instead of updating their routing rules to go through it. This is very useful in environments in which invasive networking changes are not practical, but in which directing clients to a different service and port is easy.
 
 Running tlspretense-service:
 
