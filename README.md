@@ -27,4 +27,8 @@ Remote services work a bit differently. Unless you set up your own firewall rule
 6. Repeat until all tests are exhausted
 7. Once all tests have been exhausted, the container will print a report to console and terminate. Read the report printed by the container for which tests passed and failed, with a brief summary detailing the expected responses from your client.
 
+The final test results are in the same order as when your tests are run. This is useful if your alias and description fields truncate like the above examples. You can also find the tests and test order in the above-linked configuration file.
+
+Note also that unless you host tlspretense-service on the same machine as your service, you may need to make DNS changes for the Baseline test to pass. This is expected. See [Issue #3](https://github.com/Yelp/tlspretense-service/issues/3).
+
 To rerun all tests, simply issue make again. If you change any variables, be sure to issue a make clean beforehand, so the Docker container is rebuilt accordingly.
